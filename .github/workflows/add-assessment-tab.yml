@@ -1,0 +1,47 @@
+name: Add assessment navigation tab
+on:
+  push:
+    paths:
+      - '.github/workflows/add-assessment-tab.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  add-tab:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Insert assessment link into existing menu
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+          p=Path("index.html")
+          src=p.read_text(encoding="utf-8")
+          if 'href="assessment.html"' in src or "href='assessment.html'" in src:
+              print("Assessment tab already exists")
+              raise SystemExit(0)
+          addition=' <a href="assessment.html" class="nav-link">Assessment %</a>'
+          navs=list(re.finditer(r'<nav\b[^>]*>.*?</nav\s*>', src, flags=re.I|re.S))
+          matches=[m for m in navs if re.search(r'href\s*=\s*["\'](?:#guide|#weeks|[^"\']*#guide)["\']',m.group(),re.I)]
+          if matches:
+              nav=matches[0]
+              updated=nav.group().replace('</nav>', addition+'</nav>',1)
+              if updated==nav.group(): 
+                  updated=re.sub(r'</nav\s*>',lambda m: addition+m.group(),nav.group(),count=1,flags=re.I)
+              src=src[:nav.start()]+updated+src[nav.end():]
+          else:
+              match=re.search(r'<a\b[^>]*href\s*=\s*["\']#guide["\'][^>]*>.*?</a>',src,re.I|re.S)
+              if not match: raise RuntimeError("Cannot confidently find existing navigation; leaving page unchanged")
+              src=src[:match.end()]+addition+src[match.end():]
+          p.write_text(src, encoding="utf-8")
+      - name: Commit minimal navigation update
+        run: |
+          if git diff --quiet -- index.html; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Add Assessment % tab to CP Inquiry navigation"
+          git push
